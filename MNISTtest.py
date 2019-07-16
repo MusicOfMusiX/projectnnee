@@ -38,8 +38,8 @@ def copy_features(examples, n): #a.k.a. load_features
 	for i in range(IMAGE_SIZE**2):
 		if(examples[n,i] == 0):
 			features[i] = 0
-		elif(examples[n,i]):
-			features[i] = 1
+		elif(examples[n,i] != 0):
+			features[i] = examples[n,i]/255
 	return features
 			
 def copy_label(labels, n): #a.k.a.load_label
