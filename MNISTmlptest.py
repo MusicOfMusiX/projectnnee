@@ -1,17 +1,25 @@
+#Python 2.7.16 w/ the latest version of numpy and matplotlib (as of 20 JULY 19)
+
 import numpy as np
 import matplotlib.pyplot as plt
+
+import sys
+np.set_printoptions(threshold=sys.maxsize)
 
 ###macrodef###
 
 IMAGE_SIZE = 28 # width and length
 NUMBER_OF_CLASSES = 10 #  i.e. 0, 1, 2, 3, ..., 9
 
-NUMBER_OF_HIDDEN_LAYERS = 0 #This can be 0
-NUMBER_OF_NODES_PER_LAYER = 8
+NUMBER_OF_HIDDEN_LAYERS = 2 #This can be 0
+NUMBER_OF_NODES_PER_LAYER = 32
 
-NUMBER_OF_EXAMPLES = 1000; #We perform stochasitc gradient descent; this is equivalent to the # of epochs.
-NUMBER_OF_TESTING_EXAMPLES = 100;
-LEARINING_RATE = 0.005;
+NUMBER_OF_EXAMPLES = 500 #We perform stochasitc gradient descent; this is equivalent to the # of epochs.
+NUMBER_OF_TESTING_EXAMPLES = 400
+
+LEARINING_RATE = 0.05
+
+LOG_VERBOSITY = 100
 
 ###funcdef###
 
@@ -38,7 +46,8 @@ def load_labels(name, n):
 
 def copy_single_example(examples, n): #Copy single example a.k.a. features vector
 	#NOTE THAT WE ARE PRODUCING HORIZONTAL VECTORS/MATRICES.
-	example = np.zeros((1, IMAGE_SIZE**2))
+	#This input/feature vector must be HORIZONTAL! Well, it's not a must but it is easier for forward propagation. Will convert to vertical during backprop.
+	example = np.zeros((1,IMAGE_SIZE**2))
 	for i in range(IMAGE_SIZE**2):
 		if(examples[n,i] == 0):
 			example[0,i] = 0
@@ -48,6 +57,7 @@ def copy_single_example(examples, n): #Copy single example a.k.a. features vecto
 			
 def copy_single_label(labels, n): #Convert single label to one-hot vector
 	#TODO: Convert vector to horizontal (check whether labels should be horizontal first.)
+	#TODO UPDATE: Not really. Doesn't really matter as we index through the elements with a for loop AND even that is done only once. 
 	label = np.zeros((NUMBER_OF_CLASSES))
 	for i in range(NUMBER_OF_CLASSES):
 		if(i == labels[n]):
@@ -67,18 +77,22 @@ def softmax(logits):
 		probs[0,i] = np.exp(logits[0,i]) / sum
 	return probs
 
-def forward_propagate(network, input):
+def forward_propagate(weight_network, input):
 	#Note that the network matrix is a list of matrices.
-	probs = softmax(np.dot(input, network[0]))
+	probs = softmax(np.dot(input, weight_network[0]))
+	softmax_network = []
+	softmax_network.append(probs)
 	for i in range(NUMBER_OF_HIDDEN_LAYERS):
-		probs = softmax(np.dot(probs, network[i+1]))
-	return probs
+		probs = softmax(np.dot(probs, weight_network[i+1]))
+		softmax_network.append(probs)
+	return probs, softmax_network
 	
-def test(network, examples, labels):
+def test(weight_network, examples, labels):
 	accsum = 0.0
 	for i in range(NUMBER_OF_TESTING_EXAMPLES):
 		features = copy_single_example(examples, i)
-		probabilities = forward_propagate(network, features)	
+		dummy = []
+		probabilities, dummy = forward_propagate(weight_network, features)	
 		result = np.argmax(probabilities)
 		if(result == labels[i]):
 			accsum += 1
@@ -90,11 +104,13 @@ def softmax_derivative(output_softmax_layer):
 	#WARNING: Softmax is a vector -> vector function! There is no single 'derivative', there are NxN partial derivatives instead.
 	#Input softmax_layer vector is horizontal: np.array((1,n))
 	#Read this: https://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/
+	#This... should work without transposing.
 	n = output_softmax_layer.shape[1]
 	jacobian = np.zeros((n,n))
 	for i in range(n):
 		for j in range(n):
 			kronecker_delta = 1 if i == j else 0
+			
 			DjSi = output_softmax_layer[0,i] * (kronecker_delta - output_softmax_layer[0,j])
 			jacobian[i,j] = DjSi
 	return jacobian
@@ -108,9 +124,6 @@ def cross_entropy_derivative(input_softmax_layer, label_one_hot_vector): #input_
 		derivatives[0,i] = -1 * label_one_hot_vector[i] / input_softmax_layer[0,i] #dL/dO_i
 	return derivatives
 
-#def backward_propagate(input_layer, output_layer):
-	
-
 ###__init__###
 
 EXAMPLES = load_examples("mnist_train.csv", NUMBER_OF_EXAMPLES)
@@ -119,23 +132,27 @@ LABELS = load_labels("mnist_train.csv", NUMBER_OF_EXAMPLES)
 TESTING_EXAMPLES = load_examples("mnist_test.csv", NUMBER_OF_TESTING_EXAMPLES)
 TESTING_LABELS = load_labels("mnist_test.csv", NUMBER_OF_TESTING_EXAMPLES)
 
-NETWORK = []
+SOFTMAX_NETWORK = []
+WEIGHT_NETWORK = []
 
 if(NUMBER_OF_HIDDEN_LAYERS == 0): #SLP
 	weights = np.zeros((IMAGE_SIZE**2, NUMBER_OF_CLASSES))
-	NETWORK.append(weights)
+	WEIGHT_NETWORK.append(weights)
 
 elif(NUMBER_OF_HIDDEN_LAYERS > 0): #MLP
 	#InputL -> 1st HiddenL weights
 	initial_weights = np.zeros((IMAGE_SIZE**2, NUMBER_OF_NODES_PER_LAYER))
-	NETWORK.append(initial_weights)
+	initial_weights.fill(0.5)
+	WEIGHT_NETWORK.append(initial_weights)
 	#HiddenL -> HiddenL weights
 	hidden_weights = np.zeros((NUMBER_OF_NODES_PER_LAYER, NUMBER_OF_NODES_PER_LAYER))
+	hidden_weights.fill(0.5)
 	for i in range(NUMBER_OF_HIDDEN_LAYERS-1):
-		NETWORK.append(hidden_weights)
+		WEIGHT_NETWORK.append(hidden_weights)
 	#Last HiddenL -> OutputL weights
 	output_weights = np.zeros((NUMBER_OF_NODES_PER_LAYER, NUMBER_OF_CLASSES))
-	NETWORK.append(output_weights)
+	output_weights.fill(0.5)
+	WEIGHT_NETWORK.append(output_weights)
 
 ### MAIN LOOP ###
 print("Starting main loop")
@@ -144,23 +161,52 @@ for i in range(NUMBER_OF_EXAMPLES): #Iterate thru each epoch
 	INPUTS = copy_single_example(EXAMPLES, i)
 	LABEL = copy_single_label(LABELS, i)
 
-	probs = forward_propagate(NETWORK, INPUTS)
+	#Keep a log of softmax output values for each layer. Need to use them in softmax differentiation and hidden layer delta weight calculations.
+	final_probs, SOFTMAX_NETWORK = forward_propagate(WEIGHT_NETWORK, INPUTS)
 	
 	#Test every 50 iterations
-	if(i % 50 == 0):
-		accuracy = test(NETWORK, TESTING_EXAMPLES, TESTING_LABELS)
+	if(i % LOG_VERBOSITY == 0):
+		accuracy = test(WEIGHT_NETWORK, TESTING_EXAMPLES, TESTING_LABELS)
 		print("Iteration #" + str(i) + ": " + "Accuracy: " + str(accuracy) + "%")
 	
-	#Let's test out a no-hidden-layer setup:
-	#INPUT * Cross_deriv * Softmax_deriv
-	#X * C' * S'
+	#Ugh, difficult. See these notes: https://imgur.com/a/B0d9pIP
 	
-	deriv = cross_entropy_derivative(probs, LABEL)
-	deriv2 = softmax_derivative(probs)
-	first_error = np.dot(deriv, deriv2)
+	#The pattern is like this [2xHiddenLayer setup, see above image.]:
+	#CROSS-SOFTMAX-INPUT (Relative, Softmax output #2)
+	#CROSS-SOFTMAX-[WEIGHTMATRIX-SOFTMAX]-INPUT (Relative, Softmax output #1)
+	#CROSS-SOFTMAX-[WEIGHTMATRIX-SOFTMAX]-[WEIGHTMATRIX-SOFTMAX]-INPUT (Actual input vector)
+	#And so on.
 	
-	delta_weights = np.dot(INPUTS.T, first_error)
+	#CROSS
+	first_cross_entropy_derivative = cross_entropy_derivative(SOFTMAX_NETWORK[NUMBER_OF_HIDDEN_LAYERS], LABEL)
+	#SOFTMAX
+	first_softamx_derivative = softmax_derivative(SOFTMAX_NETWORK[NUMBER_OF_HIDDEN_LAYERS])
+	#FIRST ERROR
+	error = np.dot(first_cross_entropy_derivative, first_softamx_derivative)
 	
-	NETWORK[0] = NETWORK[0] - delta_weights * LEARINING_RATE
+	DELTA_WEIGHTS = []
 	
+	#We add the LAST delta weights in FRONT of DELTA_WEIGHTS.
+	if(NUMBER_OF_HIDDEN_LAYERS == 0):
+		DELTA_WEIGHTS.append(np.dot(INPUTS.T, error)) #Inputs is horizontal.  Need to transpose.
+	else:
+		DELTA_WEIGHTS.append(np.dot(SOFTMAX_NETWORK[NUMBER_OF_HIDDEN_LAYERS-1].T, error)) #SOFTMAX_NETWORK[i] is horizontal as well.
+	
+	#The looping part.
+	for j in range(NUMBER_OF_HIDDEN_LAYERS): #Remember, j starts from 0.
+		tempderiv1 = WEIGHT_NETWORK[NUMBER_OF_HIDDEN_LAYERS-j].T #Needs transposing.
+		tempderiv2 = softmax_derivative(SOFTMAX_NETWORK[NUMBER_OF_HIDDEN_LAYERS-1-j])
+		
+		#Second, third, fourth... error
+		error = np.dot(np.dot(error, tempderiv1), tempderiv2)
+		if(j == NUMBER_OF_HIDDEN_LAYERS-1): #i.e. If j is at its last iteration
+			DELTA_WEIGHTS.append(np.dot(INPUTS.T, error)) #Again, INPUTS is horizontal, which we do not want now. We need vertical.
+		else:
+			DELTA_WEIGHTS.append(np.dot(SOFTMAX_NETWORK[NUMBER_OF_HIDDEN_LAYERS-2-j].T, error)) #Convert hori to verti. Also, -2 @ the index. See diagram to understand.
+			
+	#Apply the deltas to weights
+	for j in range(NUMBER_OF_HIDDEN_LAYERS+1): #There are NUMBER_OF_HIDDEN_LAYERS+1 amount of weight matrices in WEIGHT_NETWORK
+		WEIGHT_NETWORK[NUMBER_OF_HIDDEN_LAYERS-j] = WEIGHT_NETWORK[NUMBER_OF_HIDDEN_LAYERS-j] - DELTA_WEIGHTS[j] * LEARINING_RATE
+	
+	#print DELTA_WEIGHTS[1]
 print("FINISHED")
