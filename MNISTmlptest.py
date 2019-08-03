@@ -66,26 +66,48 @@ def copy_single_label(labels, n): #Convert single label to one-hot vector
 			label[i] = 0
 	return label
 
+###activation funcdef###
+
 def softmax(logits):
 	#Logits are horizontal vectors
-	number_of_logits = logits.shape[1]
-	probs = np.zeros((1, number_of_logits)) #Horizontal vector outputs
+	n = logits.shape[1]
+	probs = np.zeros((1, n)) #Horizontal vector outputs
 	sum = 0.0
-	for i in range(number_of_logits):
+	for i in range(n):
 		sum += np.exp(logits[0,i])
-	for i in range(number_of_logits):
+	for i in range(n):
 		probs[0,i] = np.exp(logits[0,i]) / sum
 	return probs
 
+def relu(logits):
+	n = logits.shape[1]
+	output = np.zeros((1,n))
+	for i in range(n):
+		if(logits[0,i] > 0):
+			output[0,i] = logits[0,i]
+		#No need for else, the rest are zero anyway~
+	return output
+
 def forward_propagate(weight_network, input):
 	#Note that the network matrix is a list of matrices.
-	probs = softmax(np.dot(input, weight_network[0]))
-	softmax_network = []
-	softmax_network.append(probs)
-	for i in range(NUMBER_OF_HIDDEN_LAYERS):
-		probs = softmax(np.dot(probs, weight_network[i+1]))
-		softmax_network.append(probs)
-	return probs, softmax_network
+	activation_log = []
+	
+	#Just softmax for no hidden layers
+	if(NUMBER_OF_HIDDEN_LAYERS == 0):
+		probs = softmax(np.dot(input, weight_network[0]))
+		activation_log.append(probs)
+		
+	#n x (ReLU) => Softmax for multilayers
+	else:	
+		activation = relu(np.dot(input, weight_network[0]))
+		activation_log.append(activation)
+		for i in range(NUMBER_OF_HIDDEN_LAYERS-1):
+			activation = relu(np.dot(activation, weight_network[i+1]))
+			activation_log.append(activation)
+		probs = softmax(np.dot(activation, weight_network[NUMBER_OF_HIDDEN_LAYERS]))
+		activation_log.append(probs)
+		
+	return probs, activation_log
 	
 def test(weight_network, examples, labels):
 	accsum = 0.0
@@ -99,6 +121,13 @@ def test(weight_network, examples, labels):
 	return accsum/NUMBER_OF_TESTING_EXAMPLES*100
 
 ###backprop funcdef###
+
+def relu_derivative(output_relu_layer):
+	n = output_softmax_layer.shape[1]
+	derivatives = np.zeros((1,n))
+	for i in range(n):
+		derivatives[0,i] = 1 if output_relu_layer[0,i] > 0 else 0
+	return derivatives
 
 def softmax_derivative(output_softmax_layer):
 	#WARNING: Softmax is a vector -> vector function! There is no single 'derivative', there are NxN partial derivatives instead.
@@ -132,7 +161,7 @@ LABELS = load_labels("mnist_train.csv", NUMBER_OF_EXAMPLES)
 TESTING_EXAMPLES = load_examples("mnist_test.csv", NUMBER_OF_TESTING_EXAMPLES)
 TESTING_LABELS = load_labels("mnist_test.csv", NUMBER_OF_TESTING_EXAMPLES)
 
-SOFTMAX_NETWORK = []
+ACTIVATION_LOG = []
 WEIGHT_NETWORK = []
 
 if(NUMBER_OF_HIDDEN_LAYERS == 0): #SLP
@@ -162,7 +191,7 @@ for i in range(NUMBER_OF_EXAMPLES): #Iterate thru each epoch
 	LABEL = copy_single_label(LABELS, i)
 
 	#Keep a log of softmax output values for each layer. Need to use them in softmax differentiation and hidden layer delta weight calculations.
-	final_probs, SOFTMAX_NETWORK = forward_propagate(WEIGHT_NETWORK, INPUTS)
+	final_probs, ACTIVATION_LOG = forward_propagate(WEIGHT_NETWORK, INPUTS)
 	
 	#Test every 50 iterations
 	if(i % LOG_VERBOSITY == 0):
@@ -172,9 +201,10 @@ for i in range(NUMBER_OF_EXAMPLES): #Iterate thru each epoch
 	#Ugh, difficult. See these notes: https://imgur.com/a/B0d9pIP
 	
 	#The pattern is like this [2xHiddenLayer setup, see above image.]:
+	#(Rememeber the order is backwards.)
 	#CROSS-SOFTMAX-INPUT (Relative, Softmax output #2)
-	#CROSS-SOFTMAX-[WEIGHTMATRIX-SOFTMAX]-INPUT (Relative, Softmax output #1)
-	#CROSS-SOFTMAX-[WEIGHTMATRIX-SOFTMAX]-[WEIGHTMATRIX-SOFTMAX]-INPUT (Actual input vector)
+	#CROSS-SOFTMAX-[WEIGHTMATRIX-RELU]-INPUT (Relative, Softmax output #1)
+	#CROSS-SOFTMAX-[WEIGHTMATRIX-RELU]-[WEIGHTMATRIX-RELU]-INPUT (Actual input vector)
 	#And so on.
 	
 	#CROSS
@@ -208,5 +238,4 @@ for i in range(NUMBER_OF_EXAMPLES): #Iterate thru each epoch
 	for j in range(NUMBER_OF_HIDDEN_LAYERS+1): #There are NUMBER_OF_HIDDEN_LAYERS+1 amount of weight matrices in WEIGHT_NETWORK
 		WEIGHT_NETWORK[NUMBER_OF_HIDDEN_LAYERS-j] = WEIGHT_NETWORK[NUMBER_OF_HIDDEN_LAYERS-j] - DELTA_WEIGHTS[j] * LEARINING_RATE
 	
-	#print DELTA_WEIGHTS[1]
 print("FINISHED")
