@@ -14,7 +14,6 @@ if (not os.environ.get('PYTHONHTTPSVERIFY', '') and
 # TensorFlow and tf.keras
 import tensorflow as tf
 from tensorflow import keras
-#tf.keras.backend.set_image_data_format('channels_last')
 
 # Helper libraries
 import numpy as np
