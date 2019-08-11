@@ -24,6 +24,8 @@ import numpy as np
 
 #Additional libaries
 import random
+import time
+start = time.process_time()
 
 print("TF version: " + tf.__version__)
 
@@ -31,12 +33,12 @@ print("TF version: " + tf.__version__)
 IMAGE_SIZE = 28
 NUMBER_OF_CLASSES = 10
 
-NUMBER_OF_HIDDEN_LAYERS = 2
+NUMBER_OF_HIDDEN_LAYERS = 1
 NUMBER_OF_NODES_PER_LAYER = 32
 
 NUMBER_OF_INDIVIDUALS = 10 #i.e. Population size
 NUMBER_OF_GENERATIONS = 1000
-BATCH_SIZE = 256
+BATCH_SIZE = 512
 
 RETAIN_PROPORTION = 0.3
 UNDERDOG_SURVIVAL = 0.05
@@ -166,26 +168,29 @@ def evolve(population, test_inputs, test_labels, retain_proportion, underdog_sur
 	#Best-performing parents survive
 	for i in range(expected_number_of_survivors):
 		next_population.append(leaderboard[i])
+		leaderboard.remove(leaderboard[i])
 		
 	#Underdogs survive
 	for individual in leaderboard:
 		if(random.random() < underdog_survival):
 			next_population.append(individual)
+			leaderboard.remove(individual)
 	
 	#Fill in the dead
 	number_of_required_offspring = len(population) - len(next_population)
 	
+	#[HACK] Prepare parent chromosomes, to save encode time:
+	parent_chromosomes = []
+	for parent in next_population:
+		parent_chromosomes.append(encode(parent))
+	
 	#Survivors breed
 	for i in range(number_of_required_offspring):
-		#Select parents
-		father = random.choice(next_population)
-		next_population.remove(father) #Temporarily, to avoid self-breeding..
-		mother = random.choice(next_population)
-		next_population.append(father)
-
-		#Extract chromosomes
-		father_chromosome = encode(father)
-		mother_chromosome = encode(mother)
+		#Select parent chromosome (Not the intuitive way, but hopefully faster.)
+		father_chromosome = random.choice(parent_chromosomes)
+		parent_chromosomes.remove(father_chromosome) #Temporarily, to avoid self-breeding..
+		mother_chromosome = random.choice(parent_chromosomes)
+		parent_chromosomes.append(father_chromosome)
 		
 		#Crossover
 		offspring_chromosome = crossover(father_chromosome, mother_chromosome)
@@ -194,9 +199,10 @@ def evolve(population, test_inputs, test_labels, retain_proportion, underdog_sur
 		offspring_chromosome = mutate(offspring_chromosome, mutation_chance)
 		
 		#Apply new genetric material/chromosome to newborn offspring
-		offspring = Individual(NUMBER_OF_HIDDEN_LAYERS, NUMBER_OF_NODES_PER_LAYER) #Create 'blank' offspring individual
+		#offspring = Individual(NUMBER_OF_HIDDEN_LAYERS, NUMBER_OF_NODES_PER_LAYER) #Create 'blank' offspring individual
 		
-		offspring = decode(offspring, offspring_chromosome)
+		#[HACK] Instead of creating a fresh newborn, we recycle the corpses of the previous generation.
+		offspring = decode(leaderboard[i], offspring_chromosome)
 		#Add offspring to next generation population
 		next_population.append(offspring)
 	return next_population
@@ -205,4 +211,5 @@ def evolve(population, test_inputs, test_labels, retain_proportion, underdog_sur
 population = create_population(NUMBER_OF_INDIVIDUALS)
 for generation in range(NUMBER_OF_GENERATIONS):
 	population = evolve(population, x_train, y_train, RETAIN_PROPORTION, UNDERDOG_SURVIVAL, MUTATION_CHANCE) #Update population
-	print("Generation " + str(generation+1) + " average loss & accuracy: " + str(test_population(population, x_test, y_test)))
+	print("Generation " + str(generation+1) + " (Population size = " + str(len(population)) + ") - average loss & accuracy: " + str(test_population(population, x_test, y_test)) + " Time taken: "+ str(time.process_time() - start))
+	start = time.process_time()
