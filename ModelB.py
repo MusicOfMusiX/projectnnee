@@ -24,8 +24,8 @@ import numpy as np
 
 #Additional libaries
 import random
-import time
-start = time.process_time()
+import timeit
+tic=timeit.default_timer()
 
 print("TF version: " + tf.__version__)
 
@@ -37,7 +37,7 @@ NUMBER_OF_HIDDEN_LAYERS = 1
 NUMBER_OF_NODES_PER_LAYER = 32
 
 NUMBER_OF_INDIVIDUALS = 10 #i.e. Population size
-NUMBER_OF_GENERATIONS = 1000
+NUMBER_OF_GENERATIONS = 5000
 BATCH_SIZE = 512
 
 RETAIN_PROPORTION = 0.3
@@ -45,13 +45,13 @@ UNDERDOG_SURVIVAL = 0.05
 MUTATION_CHANCE = 0.1
 
 #Load raw data from TF servers
-"""
+
 cifar10 = keras.datasets.cifar10
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 """
 mnist = keras.datasets.mnist
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
-
+"""
 #Normalise
 x_train = x_train.astype('float32')
 x_test = x_test.astype('float32')
@@ -70,8 +70,8 @@ class Individual: #Our battle royale contestant.
 		self.model = keras.Sequential()
 		
 		#Add layers
-		#self.model.add(keras.layers.Flatten(input_shape=(32, 32, 3)))
-		self.model.add(keras.layers.Flatten(input_shape=(IMAGE_SIZE, IMAGE_SIZE)))
+		self.model.add(keras.layers.Flatten(input_shape=(32, 32, 3)))
+		#self.model.add(keras.layers.Flatten(input_shape=(IMAGE_SIZE, IMAGE_SIZE)))
 		
 		for i in range(self.n_hidden_layers):
 			self.model.add(keras.layers.Dense(self.n_nodes_per_layer, activation=tf.nn.relu, kernel_initializer='random_uniform',
@@ -211,5 +211,5 @@ def evolve(population, test_inputs, test_labels, retain_proportion, underdog_sur
 population = create_population(NUMBER_OF_INDIVIDUALS)
 for generation in range(NUMBER_OF_GENERATIONS):
 	population = evolve(population, x_train, y_train, RETAIN_PROPORTION, UNDERDOG_SURVIVAL, MUTATION_CHANCE) #Update population
-	print("Generation " + str(generation+1) + " (Population size = " + str(len(population)) + ") - average loss & accuracy: " + str(test_population(population, x_test, y_test)) + " Time taken: "+ str(time.process_time() - start))
-	start = time.process_time()
+	toc=timeit.default_timer()
+	print("Generation " + str(generation+1) + " - average loss & accuracy: " + str(test_population(population, x_test, y_test)) + " Time: " + str(toc-tic))
